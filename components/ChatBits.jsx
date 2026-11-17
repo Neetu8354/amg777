@@ -285,6 +285,67 @@ export function Sheet({ items, onClose }) {
   );
 }
 
+/* ---------- drag & drop media ---------- */
+export const MEDIA_LIMITS = { image: 5 * 1024 * 1024, video: 50 * 1024 * 1024 };
+
+export function splitMedia(files) {
+  const items = [];
+  let error = null;
+  for (const f of Array.from(files || [])) {
+    const kind = f.type?.startsWith("image/") ? "image" : f.type?.startsWith("video/") ? "video" : null;
+    if (!kind) { error = "Only images and videos can be sent"; continue; }
+    if (f.size > MEDIA_LIMITS[kind]) { error = kind === "image" ? "Image > 5MB" : "Video > 50MB"; continue; }
+    items.push({ kind, file: f });
+  }
+  return { items, error };
+}
+
+export function useFileDrop(onFiles) {
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0);
+  const cb = useRef(onFiles);
+  cb.current = onFiles;
+  const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  const dropProps = {
+    onDragEnter: (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (++depth.current === 1) setDragging(true); },
+    onDragOver: (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; },
+    onDragLeave: (e) => { if (!hasFiles(e)) return; if (--depth.current <= 0) { depth.current = 0; setDragging(false); } },
+    onDrop: (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth.current = 0; setDragging(false); cb.current?.(e.dataTransfer.files); },
+  };
+  useEffect(() => {
+    const prevent = (e) => e.preventDefault();
+    window.addEventListener("dragover", prevent);
+    window.addEventListener("drop", prevent);
+    return () => {
+      window.removeEventListener("dragover", prevent);
+      window.removeEventListener("drop", prevent);
+    };
+  }, []);
+  return { dragging, dropProps };
+}
+
+export function DropOverlay() {
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 5000, pointerEvents: "none",
+        background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          border: "3px dashed #25d366", borderRadius: 20, padding: "34px 46px",
+          textAlign: "center", color: "#fff", background: "rgba(0,0,0,.35)",
+        }}
+      >
+        <i className="fas fa-images" style={{ fontSize: 44, display: "block", marginBottom: 12 }} />
+        <div style={{ fontSize: 17, fontWeight: 700 }}>Drop images or videos to send</div>
+        <div style={{ fontSize: 12.5, opacity: 0.8, marginTop: 5 }}>Preview opens before sending</div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- image preview popup ---------- */
 const IV_CSS = `
 .iv-back { position:fixed; inset:0; z-index:100500; background:rgba(8,12,16,.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
